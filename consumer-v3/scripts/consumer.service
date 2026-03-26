@@ -1,0 +1,34 @@
+[Unit]
+Description=ChatFlow Consumer
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user
+
+# Environment variables
+Environment=RABBITMQ_HOST=**VALUES**
+Environment=RABBITMQ_PORT=5672
+Environment=RABBITMQ_USERNAME=**VALUES**
+Environment=RABBITMQ_PASSWORD=**VALUES**
+Environment=RABBITMQ_VIRTUALHOST=/
+Environment=REDIS_HOST=**VALUES**
+Environment=REDIS_PORT=6379
+Environment=PART1_BROADCAST_URL=http://**VALUES**:8081/internal/broadcast
+Environment=CONSUMER_THREAD_COUNT=4
+Environment=HEALTHCHECK_PORT=8081
+
+# Run the JAR
+ExecStart=/usr/bin/java -jar /home/ec2-user/consumer.jar
+
+# Auto-restart on failure
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
