@@ -90,8 +90,20 @@ public class MessageRepository {
         }
     }
 
-    public void saveAll(List<ChatMessage> messages) {
-        if (messages == null || messages.isEmpty()) return;
+    /**
+     * Returns the number of rows actually inserted (excludes ON CONFLICT DO NOTHING skips).
+     */
+    public static class DeadLetterException extends RuntimeException {
+        private final int batchSize;
+        public DeadLetterException(int batchSize, Throwable cause) {
+            super("Batch of " + batchSize + " messages failed all retries", cause);
+            this.batchSize = batchSize;
+        }
+        public int getBatchSize() { return batchSize; }
+    }
+
+    public int saveAll(List<ChatMessage> messages) {
+        if (messages == null || messages.isEmpty()) return 0;
 
         int attempt = 0;
         long backoff = INITIAL_BACKOFF_MS;
@@ -100,10 +112,10 @@ public class MessageRepository {
             try (Connection conn = DatabaseManager.getDataSource().getConnection()) {
                 conn.setAutoCommit(false);
                 try {
-                    batchInsertMessages(conn, messages);
+                    int inserted = batchInsertMessages(conn, messages);
                     batchUpsertActivities(conn, messages);
                     conn.commit();
-                    return; // success
+                    return inserted;
                 } catch (SQLException e) {
                     conn.rollback();
                     throw e;
@@ -113,20 +125,21 @@ public class MessageRepository {
                 if (attempt >= MAX_RETRIES) {
                     log.error("DEAD LETTER: Failed to save batch of {} messages after {} attempts: {}",
                             messages.size(), MAX_RETRIES, e.getMessage());
-                    return;
+                    throw new DeadLetterException(messages.size(), e);
                 }
                 log.warn("DB batch write attempt {}/{} failed, retrying in {}ms",
                         attempt, MAX_RETRIES, backoff);
                 try { Thread.sleep(backoff); } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    return;
+                    return 0;
                 }
                 backoff *= 2;
             }
         }
+        return 0;
     }
 
-    private void batchInsertMessages(Connection conn, List<ChatMessage> messages) throws SQLException {
+    private int batchInsertMessages(Connection conn, List<ChatMessage> messages) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(UPSERT_MESSAGE)) {
             for (ChatMessage msg : messages) {
                 ps.setString(1, msg.getMessageId());
@@ -140,7 +153,10 @@ public class MessageRepository {
                 ps.setString(9, msg.getClientIp());
                 ps.addBatch();
             }
-            ps.executeBatch();
+            int[] counts = ps.executeBatch();
+            int inserted = 0;
+            for (int c : counts) inserted += Math.max(c, 0); // -2 (SUCCESS_NO_INFO) treated as 0
+            return inserted;
         }
     }
 

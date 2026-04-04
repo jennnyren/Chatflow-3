@@ -4,6 +4,7 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.java_websocket.WebSocket;
+import websocket.ChatWebSocketServer;
 
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -12,7 +13,7 @@ public class HttpServerManager {
     private final Server server;
     private final ConcurrentHashMap<WebSocket, String> roomMapping;
 
-    public HttpServerManager(int port, ConcurrentHashMap<WebSocket, String> roomMapping) {
+    public HttpServerManager(int port, ConcurrentHashMap<WebSocket, String> roomMapping, ChatWebSocketServer webSocketServer) {
         this.server = new Server(port);
         this.roomMapping = new ConcurrentHashMap<>();
 
@@ -22,7 +23,7 @@ public class HttpServerManager {
 
         context.addServlet(new ServletHolder(new HealthServlet()), "/health");
         context.addServlet(new ServletHolder(new BroadcastServlet(this.roomMapping)), "/internal/broadcast");
-        context.addServlet(new ServletHolder(new MetricsServlet()), "/metrics");
+        context.addServlet(new ServletHolder(new MetricsServlet(webSocketServer)), "/metrics");
     }
 
     public void start() throws Exception {

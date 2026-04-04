@@ -45,7 +45,7 @@ public class Main {
         }
 
         HttpServerManager broadcastHttpServer = new HttpServerManager(
-                BROADCAST_HTTP_PORT, webSocketServer.getRoomMapping());
+                BROADCAST_HTTP_PORT, webSocketServer.getRoomMapping(), webSocketServer);
         broadcastHttpServer.start();
         System.out.println("Broadcast HTTP server started on port " + BROADCAST_HTTP_PORT);
 

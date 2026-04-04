@@ -110,6 +110,8 @@ public class ConsumerThread implements Runnable {
             long deliveryTag = delivery.getEnvelope().getDeliveryTag();
             String queueName = delivery.getEnvelope().getRoutingKey();
 
+            metrics.recordConsumed();
+
             // Deserialize
             ChatMessage message;
             try {
@@ -118,7 +120,7 @@ public class ConsumerThread implements Runnable {
                 log.error("[{}] Failed to deserialize message from '{}': {}",
                         threadId, queueName, e.getMessage());
                 safeAck(channel, deliveryTag); // remove malformed message from queue
-                metrics.recordFailure();
+                metrics.recordDiscarded();
                 return;
             }
 
@@ -140,7 +142,7 @@ public class ConsumerThread implements Runnable {
                 case ACK:
                     deduplicationService.markSeen(message.getMessageId());
                     safeAck(channel, deliveryTag);
-                    metrics.recordMessageProcessed();
+                    metrics.recordMessageBroadcast();
                     break;
 
                 case NACK:
@@ -152,6 +154,7 @@ public class ConsumerThread implements Runnable {
                 case DISCARD:
                     // Ack to remove — retrying won't help
                     safeAck(channel, deliveryTag);
+                    metrics.recordDiscarded();
                     log.warn("[{}] Message '{}' discarded.", threadId, message.getMessageId());
                     break;
             }

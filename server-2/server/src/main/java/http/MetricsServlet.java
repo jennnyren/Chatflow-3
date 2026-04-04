@@ -5,12 +5,19 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import util.JsonUtil;
+import websocket.ChatWebSocketServer;
 
 import java.io.IOException;
 import java.sql.*;
 import java.util.*;
 
 public class MetricsServlet extends HttpServlet {
+
+    private final ChatWebSocketServer webSocketServer;
+
+    public MetricsServlet(ChatWebSocketServer webSocketServer) {
+        this.webSocketServer = webSocketServer;
+    }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -26,6 +33,9 @@ public class MetricsServlet extends HttpServlet {
 
     private Map<String, Object> collectMetrics() throws SQLException {
         Map<String, Object> result = new LinkedHashMap<>();
+
+        result.put("rabbitmqPublishSuccess", webSocketServer.getAndResetPublishSuccessCount());
+        result.put("rabbitmqPublishFailure", webSocketServer.getPublishFailureCount());
 
         try (Connection conn = DatabaseManager.getDataSource().getConnection()) {
 

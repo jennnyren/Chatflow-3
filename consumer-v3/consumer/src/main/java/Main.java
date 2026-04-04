@@ -75,7 +75,7 @@ public class Main {
 
         // Health check server
         HealthCheckServer healthCheckServer = new HealthCheckServer(
-                config.getHealthCheckPort(), consumerPool);
+                config.getHealthCheckPort(), consumerPool, dbWriterPool);
         healthCheckServer.start();
 
         // Stats server

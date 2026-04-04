@@ -51,6 +51,7 @@ public class ConsumerPool {
 
         List<List<String>> assignments = distributeRooms(rooms, threadCount);
 
+        // creates a fixed-size thread pool where the threads are non-daemon threads
         executorService = Executors.newFixedThreadPool(threadCount, r -> {
             Thread t = new Thread(r);
             t.setDaemon(false);

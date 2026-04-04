@@ -13,8 +13,8 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class LoadTestClient {
-    private static final int TOTAL_MESSAGES = 500000;
-    private static final int WARMUP_THREADS = 25;
+    private static final int TOTAL_MESSAGES = 1000000;
+    private static final int WARMUP_THREADS = 32;
     private static final int WARMUP_MESSAGES_PER_THREAD = 200;
     private static final int MAIN_THREADS = 64;
 
@@ -31,9 +31,9 @@ public class LoadTestClient {
         //performLittlesLawAnalysis();
 
         LoadTestClient client = new LoadTestClient();
-        client.runWarmupPhase();
+        //client.runWarmupPhase();
 
-        //client.runMainPhase();
+        client.runMainPhase();
 
         System.out.println("\nWaiting 30 seconds for consumer to finish writing to DB...");
         Thread.sleep(30000);

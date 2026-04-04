@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class DbWriterThread implements Runnable {
 
@@ -25,14 +26,20 @@ public class DbWriterThread implements Runnable {
     private final BlockingQueue<ChatMessage> queue;
     private final MessageRepository messageRepository;
     private final ConcurrentLinkedQueue<Long> latencySamples;
+    private final AtomicLong messagesWrittenToDb;
+    private final AtomicLong messagesDeadLettered;
     private volatile boolean running = true;
 
     public DbWriterThread(String threadId,
                           BlockingQueue<ChatMessage> queue,
-                          ConcurrentLinkedQueue<Long> latencySamples) {
+                          ConcurrentLinkedQueue<Long> latencySamples,
+                          AtomicLong messagesWrittenToDb,
+                          AtomicLong messagesDeadLettered) {
         this.threadId = threadId;
         this.queue = queue;
         this.latencySamples = latencySamples;
+        this.messagesWrittenToDb = messagesWrittenToDb;
+        this.messagesDeadLettered = messagesDeadLettered;
         this.messageRepository = new MessageRepository();
     }
 
@@ -79,14 +86,30 @@ public class DbWriterThread implements Runnable {
     private void flushBatch(List<ChatMessage> batch) {
         try {
             long start = System.currentTimeMillis();
-            messageRepository.saveAll(batch);
+            int inserted = messageRepository.saveAll(batch);
             long latencyMs = System.currentTimeMillis() - start;
             latencySamples.add(latencyMs);
-            log.debug("[{}] Flushed batch of {} messages in {}ms.", threadId, batch.size(), latencyMs);
+            messagesWrittenToDb.addAndGet(inserted);
+            log.debug("[{}] Flushed batch of {} messages ({} inserted) in {}ms.", threadId, batch.size(), inserted, latencyMs);
+        } catch (MessageRepository.DeadLetterException e) {
+            log.warn("[{}] Batch of {} failed all retries — falling back to individual saves.", threadId, e.getBatchSize());
+            fallbackIndividual(batch);
         } catch (Exception e) {
-            log.error("[{}] Failed to flush batch of {}: {}", threadId, batch.size(), e.getMessage());
+            log.error("[{}] Unexpected error flushing batch of {}: {}", threadId, batch.size(), e.getMessage());
         } finally {
             batch.clear();
+        }
+    }
+
+    private void fallbackIndividual(List<ChatMessage> batch) {
+        for (ChatMessage msg : batch) {
+            try {
+                messageRepository.save(msg);
+                messagesWrittenToDb.incrementAndGet();
+            } catch (Exception e) {
+                messagesDeadLettered.incrementAndGet();
+                log.error("[{}] Dead letter: message '{}' permanently lost: {}", threadId, msg.getMessageId(), e.getMessage());
+            }
         }
     }
 

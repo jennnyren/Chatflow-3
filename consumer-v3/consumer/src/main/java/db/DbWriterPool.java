@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class DbWriterPool {
 
@@ -16,6 +17,9 @@ public class DbWriterPool {
     private final BlockingQueue<ChatMessage> queue;
     private final List<DbWriterThread> writerThreads = new ArrayList<>();
     private final ConcurrentLinkedQueue<Long> latencySamples = new ConcurrentLinkedQueue<>();
+    private final AtomicLong messagesWrittenToDb = new AtomicLong(0);
+    private final AtomicLong messagesDroppedQueueFull = new AtomicLong(0);
+    private final AtomicLong messagesDeadLettered = new AtomicLong(0);
     private ExecutorService executorService;
 
     public DbWriterPool(int threadCount, int queueCapacity) {
@@ -29,7 +33,7 @@ public class DbWriterPool {
 
         for (int i = 0; i < threadCount; i++) {
             String threadId = "db-writer-" + (i + 1);
-            DbWriterThread thread = new DbWriterThread(threadId, queue, latencySamples);
+            DbWriterThread thread = new DbWriterThread(threadId, queue, latencySamples, messagesWrittenToDb, messagesDeadLettered);
             writerThreads.add(thread);
             executorService.submit(thread);
             log.info("Started {}.", threadId);
@@ -41,8 +45,19 @@ public class DbWriterPool {
 
     public void submit(ChatMessage message) {
         if (!queue.offer(message)) {
+            messagesDroppedQueueFull.incrementAndGet();
             log.warn("DB writer queue full! Dropping message '{}'.", message.getMessageId());
         }
+    }
+
+    public long getMessagesWrittenToDb() { return messagesWrittenToDb.get(); }
+    public long getMessagesDroppedQueueFull() { return messagesDroppedQueueFull.get(); }
+    public long getMessagesDeadLettered() { return messagesDeadLettered.get(); }
+
+    public void resetMetrics() {
+        messagesWrittenToDb.set(0);
+        messagesDroppedQueueFull.set(0);
+        messagesDeadLettered.set(0);
     }
 
     public void reportLatencyPercentiles() {

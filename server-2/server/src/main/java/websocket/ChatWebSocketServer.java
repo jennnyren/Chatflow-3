@@ -19,12 +19,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ChatWebSocketServer extends WebSocketServer {
 
     private static final String EXCHANGE_NAME = "chat.exchange";
     private final ConcurrentHashMap<WebSocket, String> roomMapping;
     private final RabbitMQConnectionManager rabbitMQConnectionManager;
+    private final AtomicLong publishSuccessCount = new AtomicLong(0);
+    private final AtomicLong publishFailureCount = new AtomicLong(0);
 
     /**
      * Unique ID for this server instance.
@@ -110,6 +113,7 @@ public class ChatWebSocketServer extends WebSocketServer {
             Channel channel = rabbitMQConnectionManager.borrowChannel();
             try {
                 channel.basicPublish(EXCHANGE_NAME, routingKey, props, body);
+                publishSuccessCount.incrementAndGet();
                 System.out.println("Published to RabbitMQ [" + routingKey + "]: " + envelope.getMessageId());
             } finally {
                 rabbitMQConnectionManager.returnChannel(channel);
@@ -118,6 +122,7 @@ public class ChatWebSocketServer extends WebSocketServer {
         } catch (JsonProcessingException e) {
             sendError(conn, "Invalid JSON format: " + e.getMessage());
         } catch (Exception e) {
+            publishFailureCount.incrementAndGet();
             System.err.println("Failed to publish to RabbitMQ: " + e.getMessage());
             sendError(conn, "Failed to deliver message. Please try again.");
         }
@@ -157,4 +162,7 @@ public class ChatWebSocketServer extends WebSocketServer {
     public ConcurrentHashMap<WebSocket, String> getRoomMapping() {
         return roomMapping;
     }
+
+    public long getAndResetPublishSuccessCount() { return publishSuccessCount.getAndSet(0); }
+    public long getPublishFailureCount() { return publishFailureCount.get(); }
 }
